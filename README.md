@@ -13,3 +13,5 @@ Backend- Node.js hosted on AWS or GCP.
 APIs to populate data- Google API and Yelp API.
 
 Data type- JSON.
+
+Animation effects- AngularJS.
