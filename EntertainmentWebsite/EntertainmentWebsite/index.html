@@ -1,0 +1,1660 @@
+﻿<!DOCTYPE html>
+<html ng-app="myApp">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script type="text/javascript" async src="https://platform.twitter.com/widgets.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css">
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css"/>
+    <script src="//cdnjs.cloudflare.com/ajax/libs/moment.js/2.7.0/moment.min.js" type="text/javascript"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.6.4/angular-animate.js"></script>
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/jquery.bootstrapvalidator/0.5.2/css/bootstrapValidator.min.css" />
+    <script type="text/javascript" src="//cdnjs.cloudflare.com/ajax/libs/jquery.bootstrapvalidator/0.5.2/js/bootstrapValidator.min.js"></script>
+    <script>
+        var app = angular.module('myApp', ['ngAnimate']);
+
+        app.controller('MyController', function ($scope) {
+            $scope.reviewType = 'google';
+            $scope.refresh = function () {
+                $scope.reviewType = 'google';
+            }
+        });
+    </script>
+    <script type="text/javascript">
+        var map;
+        var panorama;
+        var marker;
+        var ip;
+        var googleObj = [];
+        var yelpObj = [];
+        var placeAddress = {};
+        var favMapping = [];
+        var placeObj1 = [];
+        var placeObj2 = [];
+        var placeObj3 = [];
+        var check2 = false;
+        var check3 = false;
+        var yelpCheck = false;
+        var favorite = window.localStorage;
+        var directionsDisplay;
+        var directionsService;
+        var currentId=-1;
+        var currentPage = -1;
+        var currentPlaceId = -1;
+        var currentLocation = function () {
+                $.ajax({
+                    global: false,
+                    type: 'GET',
+                    url: 'http://ip-api.com/json/',
+                    success: function (ipResult) {
+                        loadCurrentLocation(ipResult);
+                    },
+                    error: function (request, status, error) {
+                        alert("Failed to get the user location");
+                    }
+                });
+        };
+        function loadCurrentLocation(ipResult) {
+            var latlon = ipResult.lat + "," + ipResult.lon;
+            document.getElementById("ipLocation").value = latlon;
+        }
+        var enableButton = function () {
+            document.getElementById("otherLocation").disabled = false;
+            document.getElementById("ipLocation").disabled = true;
+        };
+
+        var placeSearch, autocomplete, autocompleteMap;
+        function initAutocomplete() {
+            autocomplete = new google.maps.places.Autocomplete(
+                (document.getElementById('otherLocation')),
+                { types: ['geocode'] });
+
+            autocompleteMap = new google.maps.places.Autocomplete(
+                (document.getElementById('mapFrom')),
+                { types: ['geocode'] });
+          }
+
+        function geolocate() {
+            if (navigator.geolocation) {
+              navigator.geolocation.getCurrentPosition(function(position) {
+                var geolocation = {
+                  lat: position.coords.latitude,
+                  lng: position.coords.longitude
+                };
+                var circle = new google.maps.Circle({
+                  center: geolocation,
+                  radius: position.coords.accuracy
+                });
+                autocomplete.setBounds(circle.getBounds());
+                autocompleteMap.setBounds(circle.getBounds());
+              });
+            }
+        }
+        function displayResult(jsonObj,pageno)
+        {
+            if (jsonObj['results'] == undefined || jsonObj['results'].length == 0) {
+                displayNoRecord("placesResult1");
+                return;
+            }
+            var placesResult = jsonObj['results'];
+            var placeResultId = "placesResult" + pageno;
+            document.getElementById(placeResultId).innerHTML = "";
+            document.getElementById('placesDetails').hidden = true;
+            var html_text = "";
+
+            document.getElementById("detailsDiv1").hidden = false;
+            var check = true;
+            var jump = false;
+            html_text += "<table align='center' class='table table-hover'>";
+            html_text += "<tr><th>#</th>";
+            html_text += "<th>Category</th>";
+            html_text += "<th>Name</th>";
+            html_text += "<th>Address</th>";
+            html_text += "<th>Favorite</th>";
+            html_text += "<th>Details</th></tr>";
+            for (i = 0; i < placesResult.length; i++) {
+                var place_id = placesResult[i]['place_id'];
+                var id = pageno + "" + i;
+                var clickId = "click" + id;
+                var starId = "star" + id;
+                var rowId = "row" + id;
+                html_text += "<tr id='"+rowId+"'><td><p>"+(i+1)+"</p></td>";
+                html_text += "<td><img src='" + placesResult[i]['icon'] + "' width='50' height='20' alt='No image'/></td>";
+                html_text += "<td><p>" + placesResult[i]['name'] + "</p></td>";
+                html_text += "<td><p>" + placesResult[i]['vicinity'] + "</p></td>";
+                if (favorite.getItem(place_id) == null)
+                    html_text += "<td><button type='button' class='click btn btn-default' id=" + clickId + " onclick=clickStar(" + i + "," + pageno + "," + check + ",'" + place_id + "'," + jump + ") > <span id=" + starId + " class='fa fa-star-o' ></span></button ></td > ";
+                else {
+                    html_text += "<td><button type='button' class='click btn btn-default active active-2 active-3' id=" + clickId + " onclick=clickStar(" + i + "," + pageno + "," + check + ",'" + place_id + "'," + jump + ") > <span id=" + starId + " class='fa fa-star'></span></button ></td > ";
+                    favMapping.push({
+                        'place_id': place_id,
+                        'id': i,
+                        'pageno': pageno
+                    });
+                }
+                html_text += "<td><button type='button' class='btn btn-default' onclick=getDetails('" + placesResult[i]['place_id'] + "','" + placesResult[i]['geometry']['location']['lat'] + "','" + placesResult[i]['geometry']['location']['lng'] + "'," + i + "," + pageno + ")><div class='glyphicon glyphicon-menu-right'></div></button ></td></tr>";
+            }
+            html_text += "</table>";
+            if (pageno == 1 && jsonObj['next_page_token']) {
+                html_text += "<div class='page'><button class='btn btn-default' onclick='getPage2()'>Next</button></div>";
+            }
+            if (pageno == 2 && jsonObj['next_page_token']) {
+                html_text += "<div class='page'><button class='btn btn-default' onclick= 'getPrevious(" + pageno + ")'>Previous</button>&nbsp";
+                html_text += "<button class='btn btn-default' onclick= 'getPage3()' >Next</button></div>";
+            }
+            if (pageno == 2 && jsonObj['next_page_token'] == undefined) {
+                html_text += "<div class='page'><button class='btn btn-default' onclick='getPrevious(" + pageno + ")'>Previous</button></div>";
+            }
+            if (pageno == 3) {
+                html_text += "<div class='page'><button class='btn btn-default' onclick='getPrevious(" + pageno + ")'>Previous</button></div>";
+            }
+            document.getElementById(placeResultId).innerHTML += html_text;
+            displayFavorite();
+        }
+        function getPage2() {
+            document.getElementById("placesResult1").hidden = true;
+            document.getElementById("placesResult2").hidden = false;
+            if (!check2)
+            {
+                $.ajax({
+                    global: false,
+                    type: 'GET',
+                    url: '/nextPage',
+                    data: {
+                        'next_page_token': placeObj1['next_page_token']
+                    },
+                    success: function (nextPageObj) {
+                        placeObj2 = nextPageObj;
+                        check2 = true;
+                        displayResult(placeObj2, 2);
+                    },
+                    error: function (request, status, error) {
+                        document.getElementById("placesResult2").innerHTML="<div class='error'>Failed to get place search results.</div>";
+                    }
+                });
+            }
+        }
+        function getPage3() {
+            document.getElementById("placesResult2").hidden = true;
+            document.getElementById("placesResult3").hidden = false;
+            if (!check3) {
+                $.ajax({
+                    global: false,
+                    type: 'GET',
+                    url: '/nextPage',
+                    data: {
+                        'next_page_token': placeObj2['next_page_token']
+                    },
+                    success: function (nextPageObj) {
+                        placeObj3 = nextPageObj;
+                        check3 = true;
+                        displayResult(placeObj3, 3);
+                    },
+                    error: function (request, status, error) {
+                        document.getElementById("placesResult3").innerHTML = "<div class='error'>Failed to get place search results.</div>";
+                    }
+                });
+            }
+        }
+        function getPrevious(id) {
+            var curr = "placesResult" + id;
+            var previous = "placesResult" + (id - 1);
+
+            document.getElementById(curr).hidden = true;
+            document.getElementById(previous).hidden = false;
+        }
+        function viewDetails() {
+            document.getElementById('overViewPage').hidden = true;
+            document.getElementById('placesDetails').hidden = false;
+            $('.nav-tabs a[href="#info"]').tab('show');
+        }
+        function changeHighlight(id, pageno, place_id) {
+            var rowId = "row" + pageno + id;
+            if (currentId != -1 && currentPage != -1) {
+                var current = "row" + currentPage + "" + currentId;
+                if (document.getElementById(current)!=null)
+                    document.getElementById(current).style.backgroundColor = "white";
+
+                if (favorite.getItem(currentPlaceId) != null) {
+                    var counter = favorite.getItem(currentPlaceId);
+                    var favRow = "favrow" + counter;
+                    if (document.getElementById(favRow)!=null)
+                        document.getElementById(favRow).style.backgroundColor = "white";
+                }
+            }
+            var newId = "row" + pageno + "" + id;
+            if (document.getElementById(newId) != null)
+                document.getElementById(newId).style.backgroundColor = "#fedf96";
+            currentId = id;
+            currentPage = pageno;
+            currentPlaceId = place_id;
+            if (favorite.getItem(currentPlaceId) != null) {
+                var counter = favorite.getItem(currentPlaceId);
+                var favRow = "favrow" + counter;
+                if (document.getElementById(favRow)!=null)
+                    document.getElementById(favRow).style.backgroundColor = "#fedf96";
+            }
+        }
+        function getDetails(place_id,lat,lng,id,pageno)
+        {
+            if (place_id == currentPlaceId)
+                viewDetails();
+            else {
+                document.getElementById("detailsButton1").disabled = false;
+                document.getElementById("detailsButton2").disabled = false;
+                changeHighlight(id, pageno, place_id);
+                yelpCheck = false;
+                googleObj = [];
+                yelpObj = [];
+                ip = { lat: Number(lat), lng: Number(lng) };
+                document.getElementById("mapContainer").innerHTML = "";
+                document.getElementById("route-Panel").innerHTML = "";
+                map = new google.maps.Map(document.getElementById('mapContainer'), {
+                    center: ip,
+                    zoom: 15
+                });
+                panorama = map.getStreetView();
+                panorama.setPosition(ip);
+                panorama.setPov(({
+                    heading: 265,
+                    pitch: 0
+                }));
+                var service = new google.maps.places.PlacesService(map);
+                directionsDisplay = new google.maps.DirectionsRenderer;
+                directionsService = new google.maps.DirectionsService;
+                directionsDisplay.setMap(map);
+                service.getDetails({
+                    placeId: place_id
+                }, function (placeDetails, status) {
+                    if (status === google.maps.places.PlacesServiceStatus.OK) {
+                        marker = new google.maps.Marker({
+                            map: map,
+                            position: placeDetails.geometry.location
+                        });
+                        saveAddress(placeDetails);
+                        displayDetails(placeDetails, id, pageno);
+                        displayPhotos(placeDetails);
+                        displayMap(placeDetails);
+                        displayGoogleReviews(placeDetails);
+                        saveTweet(placeDetails);
+                    }
+                    else if (status == google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
+                        displayNoRecord("details");
+                    }
+                    else {
+                        document.getElementById("info").innerHTML = "<div class='error'>Failed to get details results.</div>";
+                        document.getElementById("photos").innerHTML = "<div class='error'>Failed to get photos results.</div>";
+                        document.getElementById("mapFail").innerHTML = "<div class='error'>Failed to get  map results.</div>";
+                        document.getElementById("reviewFail").innerHTML = "<div class='error'>Failed to get google reviews results.</div>";
+                    }
+                });
+            }
+        }
+        function saveAddress(placeDetails) {
+            var components = placeDetails['address_components'];
+            placeAddress['name'] = placeDetails['name'];
+            if (placeDetails['formatted_address'] != undefined)
+                placeAddress['address'] = placeDetails['formatted_address'];
+            for (var i = 0; i < components.length; i++) {
+                placeAddress[components[i]['types'][0]] = components[i]['short_name'];
+            }
+        }
+        function displayDetails(placeDetails,id,pageno)
+        {
+            document.getElementById('overViewPage').hidden = true;
+            document.getElementById('placesDetails').hidden = false;
+            $('.nav-tabs a[href="#info"]').tab('show');
+            var starPercentageRounded;
+            var key = placeDetails['place_id'] + "";
+            if ((favorite.getItem(key) == null && $('#detailStar').hasClass("fa-star")) || (favorite.getItem(key) != null && $('#detailStar').hasClass("fa-star-o")))
+                changeDetailStar(false);
+            document.getElementById('placeName').innerHTML = placeDetails['name'];
+            var html_text = "";
+            html_text += "<table class='table table-striped' align='center' id='detailsTable'>";
+            if (placeDetails['formatted_address'] != undefined)
+                html_text += "<tr><th>Address</th><td>" + placeDetails['formatted_address'] + "</td></tr>";
+            if (placeDetails['international_phone_number'] != undefined)
+                html_text += "<tr><th>Phone Number</th><td>" + placeDetails['international_phone_number'] + "</td></tr>";
+            if (placeDetails['price_level'] != undefined) {
+                var price = placeDetails['price_level'];
+                var dollar = "";
+                for (var i= 0; i < price;i++){
+                    dollar += "$";
+                }
+                html_text += "<tr><th>Price Level</th><td>" + dollar + "</td></tr>";
+            }
+            if (placeDetails['rating'] != undefined) {
+                html_text += "<tr><th>Rating</th><td><div id='leftDiv'>" + placeDetails['rating'] + "</div><div id='rightDiv'><table><tbody><tr><td><div class='stars-outer' id='outer'><div class='stars-inner' id='inner'></div></td></tr></tbody></table></div></td></tr>";
+                const ratings = placeDetails['rating'];
+                const starTotal = 5;
+                const starPercentage = (ratings / starTotal) * 100;
+                starPercentageRounded = `${(Math.round(starPercentage / 10) * 10)}%`;
+
+            }
+             if (placeDetails['url'] != undefined)
+                 html_text += "<tr><th>Google Page</th><td><a href='" + placeDetails['url'] + "' target='new'>" + placeDetails['url']+"</a></td></tr>";
+            if (placeDetails['website'] != undefined)
+                 html_text += "<tr><th>Website</th><td><a href='" + placeDetails['website'] + "'target='new'>" + placeDetails['website'] + "</a></td></tr>";
+            if (placeDetails['opening_hours']) {
+                var n = moment().utc(placeDetails['utc_offset']).day();
+                var open = placeDetails['opening_hours']['weekday_text'][n-1];
+                html_text += "<tr><th>Hours</th>";
+                var index = open.indexOf(":");
+                if (placeDetails['opening_hours']['open_now']) {
+                    html_text += "<td>Open Now:" + open.substring(index + 1) +"&nbsp&nbsp&nbsp";
+                }
+                else
+                    html_text += "<td>CLOSED&nbsp&nbsp&nbsp";
+
+                html_text += "<a data-toggle='modal' data-target='#openHoursModal' style='text-decoration:underline'>Daily open Hours</a></td></tr>";
+
+                var modalText = "";
+                modalText += "<table class='table'>";
+                modalText += "<tr><th>" + open.substring(0, index) + "</th><th>" + open.substring(index+1) + "</th></tr>";
+                for (i = 0; i < 7; i++) {
+                    if (i == n-1) continue;
+                    var openTime = placeDetails['opening_hours']['weekday_text'][i];
+                    var startIndex = openTime.indexOf(":");
+                    modalText += "<tr><td>" + openTime.substring(0, startIndex) + "</td><td>" + openTime.substring(startIndex + 1) + "</td></tr>";
+                }
+                document.getElementById("modalBody").innerHTML = modalText;
+            }
+            html_text += "</table>";
+            document.getElementById("info").innerHTML = html_text;
+            if (placeDetails['rating'] != undefined)
+                document.getElementById("inner").style.width = starPercentageRounded;
+        }
+        function displayPhotos(placeDetails)
+        {
+            document.getElementById("photos").innerHTML = "";
+            var photos = placeDetails.photos;
+            if (!photos) {
+                displayNoRecord("photos");
+                return;
+            }
+            var allImages = "<div class='imageRow'>";
+
+            var imageCol1 = "<div class='imageColumn'>";
+            var imageCol2 = "<div class='imageColumn'>";
+            var imageCol3 = "<div class='imageColumn'>";
+            var imageCol4 = "<div class='imageColumn'>";
+            for (var i = 0; i < photos.length; i++) {
+                var bigsrc = photos[i].getUrl({ 'maxWidth': photos[i].width, 'maxHeight': photos[i].height });
+                imageCol1 += "<a href='" + bigsrc + "' target='new'><img src='" + bigsrc + "' style='width: 100%'/></a>"
+                i += 1;
+                if (i < photos.length) {
+                    bigsrc = photos[i].getUrl({ 'maxWidth': photos[i].width, 'maxHeight': photos[i].height });
+                    imageCol2 += "<a href='" + bigsrc + "' target='new'><img src='" + bigsrc + "' style='width: 100%'/></a>"
+                    i += 1;
+                    if (i < photos.length) {
+                        bigsrc = photos[i].getUrl({ 'maxWidth': photos[i].width, 'maxHeight': photos[i].height });
+                        imageCol3 += "<a href='" + bigsrc + "' target='new'><img src='" + bigsrc + "' style='width: 100%'/></a>"
+                        i += 1;
+                        if (i < photos.length) {
+                            bigsrc = photos[i].getUrl({ 'maxWidth': photos[i].width, 'maxHeight': photos[i].height });
+                            imageCol4 += "<a href='" + bigsrc + "' target='new'><img src='" + bigsrc + "' style='width: 100%'/></a>"
+
+                        }
+                    }
+                }
+            }
+                imageCol1 += "</div>";
+                imageCol2 += "</div>";
+                imageCol3 += "</div>";
+                imageCol4 += "</div>";
+                allImages += imageCol1 + imageCol2 + imageCol3 + imageCol4+"</div>";
+            document.getElementById("photos").innerHTML = allImages;
+        }
+        function displayMap(placeDetails)
+        {
+            document.getElementById("mode").value = 'DRIVING';
+            document.getElementById("mapIcon").src = 'http://cs-server.usc.edu:45678/hw/hw8/images/Pegman.png';
+            document.getElementById("mapSubmit").disabled = true;
+            document.getElementById("mapTo").value = placeDetails['formatted_address'];
+            if (document.getElementById("current").checked) {
+                document.getElementById("mapFrom").value = "";
+                document.getElementById("mapFrom").placeholder = "Your location";
+            }
+            else
+                document.getElementById("mapFrom").value = document.getElementById("otherLocation").value;
+        }
+        function toggleMap() {
+            if (document.getElementById("mapIcon").src == 'http://cs-server.usc.edu:45678/hw/hw8/images/Map.png')
+            {
+                document.getElementById("mapIcon").src = 'http://cs-server.usc.edu:45678/hw/hw8/images/Pegman.png';
+                panorama.setVisible(false);
+            }
+            else {
+                document.getElementById("mapIcon").src = 'http://cs-server.usc.edu:45678/hw/hw8/images/Map.png';
+                panorama.setVisible(true);
+            }
+        }
+        function checkStatus() {
+            if (document.getElementById("ipLocation").value === "") {
+                document.getElementById("submit").disabled = true;
+            }
+            document.getElementById("otherLocation").value = "";
+            document.getElementById("otherLocation").disabled = true;
+        }
+
+        function displayRoute() {
+            event.preventDefault();
+            document.getElementById('route-Panel').innerHTML = "";
+            directionsDisplay.setPanel(document.getElementById('route-Panel'));
+            var origin;
+            var originDim="";
+            if (document.getElementById("mapFrom").value == "My location") {
+                originDim = document.getElementById("ipLocation").value.split(",");
+                origin = { lat: Number(originDim[0]), lng: Number(originDim[1]) };
+            }
+            else
+                origin = document.getElementById("mapFrom").value;
+            marker.setMap(null);
+            directionsService.route({
+                origin: origin,
+                destination: document.getElementById("mapTo").value,
+                travelMode: document.getElementById("mode").value,
+                provideRouteAlternatives: true
+            }, function (response, status) {
+                if (status === 'OK') {
+                    directionsDisplay.setDirections(response);
+                } else {
+                    document.getElementById("route-Panel").innerHTML = "<div class='error'>Failed to get routes results.</div>";
+                }
+            });
+        }
+        function displayGoogleReviews(placeDetails)
+        {
+            var utc_offset = placeDetails['utc_offset'];
+            if (placeDetails['reviews'] == undefined || placeDetails['reviews'].length == 0) {
+                displayReviewTable(googleObj);
+                return;
+            }
+            document.getElementById("reviewType").value = 'google';
+            document.getElementById("sortType").value = 'default';
+            document.getElementById("googleReviews").innerHTML = "";
+            document.getElementById("yelpReviews").innerHTML = "";
+            //document.getElementById("googleReviews").hidden = false;
+            //document.getElementById("yelpReviews").hidden = true;
+            var reviews = placeDetails['reviews'];
+            for (var i = 0; i < placeDetails['reviews'].length; i++)
+            {
+                var author_name = (reviews[i]['author_name'] == undefined) ? "" : reviews[i]['author_name'];
+                var author_url = (reviews[i]['author_url'] == undefined) ? "" : reviews[i]['author_url'];
+                var profile_url = (reviews[i]['profile_photo_url'] == undefined) ? "" : reviews[i]['profile_photo_url'];
+                var rating = (reviews[i]['rating'] == undefined) ? "" : reviews[i]['rating'];
+                var time = moment().subtract(reviews[i]['time']).format('YYYY-MM-DD hh:mm:ss');
+                var content = (reviews[i]['text'] == undefined) ? "" : reviews[i]['text'];
+
+                googleObj.push({
+                    id:i,
+                    author_name: author_name,
+                    author_url: author_url,
+                    profile_url:profile_url,
+                    rating: rating,
+                    time: time,
+                    content: content
+                });
+            }
+            displayReviewTable(googleObj);
+        }
+        function displayReviewTable(reviewArr)
+        {
+            var reviewVal = document.getElementById('reviewType').value;
+            var id = "";
+            var other = "";
+            if (reviewVal == "yelp") {
+                id = "yelpReviews";
+                other = "googleReviews";
+            }
+            else {
+                id = "googleReviews";
+                other = "yelpReviews";
+            }
+            var html_text = "";
+            document.getElementById(id).innerHTML = html_text;
+            document.getElementById(id).hidden = false;
+            //document.getElementById(other).hidden = true;
+
+            if (reviewArr.length == 0) {
+                displayNoRecord(id);
+                return;
+            }
+            for (var i = 0; i < reviewArr.length; i++) {
+                var author_url = reviewArr[i]['author_url'];
+                html_text += "<div class='reviewTable'>";
+                if (reviewArr[i]['profile_url'] != "") {
+                    if (author_url!="")
+                        html_text += "<div class='profilePic'><a href= '" + author_url + "' target= 'new'><img src='" + reviewArr[i]['profile_url'] + "' width='50' height='50' /></a></div > ";
+                    else
+                        html_text += "<div class='profilePic'><img src='" + reviewArr[i]['profile_url'] + "' width='50' height='50' /></div > ";
+                }
+                else
+                    html_text += "<div class='profilePic'></div>";
+                if (author_url!="")
+                    html_text += "<div class='reviewContent'><div class='reviewName'><a href='" + author_url + "' target='new'>" + reviewArr[i]['author_name'] + "</a></div>";
+                else
+                    html_text += "<div class='reviewContent'><div class='reviewName'>" + reviewArr[i]['author_name'] + "</div>";
+                html_text += "<div class='reviewRate'>";
+                if (reviewArr[i]['rating']!="") {
+                    var rate = "";
+                    for (j = 0; j < reviewArr[i]['rating']; j++)
+                        rate += "&#9733;";
+                    html_text += rate;
+                }
+                html_text += "</div>";
+                if (reviewArr[i]['time'] != "")
+                    html_text += "<div class='reviewTime'>"+ reviewArr[i]['time']+"</div>";
+                if (reviewArr[i]['content']!="")
+                    html_text += "<div class='reviewText'>" + reviewArr[i]['content'] + "</div>";
+                html_text += "</div></div>";
+            }
+            document.getElementById(id).innerHTML = html_text;
+        }
+        function changeSort()
+        {
+            var sortType = document.getElementById('sortType').value;
+            var reviewVal = document.getElementById('reviewType').value;
+            if (reviewVal == "yelp")
+                reviewObj = yelpObj;
+            else
+                reviewObj = googleObj;
+
+            if (reviewObj.length == 0) {
+                displayReviewTable(reviewObj);
+                return;
+            }
+            switch (sortType) {
+                case 'highRating':
+                    reviewObj.sort(function (a, b) {
+                        return b['rating'] - a['rating'];
+                    });
+                    break;
+                case 'lowRating':
+                    reviewObj.sort(function (a, b) {
+                        return a['rating'] - b['rating'];
+                    });
+                    break;
+                case 'mostRecent':
+                    reviewObj.sort(function (a, b) {
+                        return new Date(b['time']) - new Date(a['time']);
+                    });
+                    break;
+                case 'leastRecent':
+                    reviewObj.sort(function (a, b) {
+                        return new Date(a['time']) - new Date(b['time']);
+                    });
+                    break;
+                default:
+                    reviewObj.sort(function (a, b) {
+                        return a['id'] - b['id'];
+                    });
+            }
+            displayReviewTable(reviewObj);
+        }
+        function displayYelpReviews(yelpReviews) {
+            if (yelpReviews['reviews'] == undefined || yelpReviews['reviews'].length == 0) {
+                displayReviewTable(yelpObj);
+                return;
+            }
+            var reviews = yelpReviews['reviews'];
+            for (var i = 0; i < yelpReviews['reviews'].length; i++) {
+                var author_name = (reviews[i]['user']['name'] == undefined) ? "" : reviews[i]['user']['name'];
+                var author_url = (reviews[i]['url'] == undefined) ? "" : reviews[i]['url'];
+                var profile_url = (reviews[i]['user']['image_url'] == undefined) ? "" : reviews[i]['user']['image_url'];
+                var rating = (reviews[i]['rating'] == undefined) ? "" : reviews[i]['rating'];
+                var time = (reviews[i]['time_created'] == undefined) ? "" : reviews[i]['time_created'];
+                var content = (reviews[i]['text'] == undefined) ? "" : reviews[i]['text'];
+
+                yelpObj.push({
+                    id: i,
+                    author_name: author_name,
+                    author_url: author_url,
+                    profile_url: profile_url,
+                    rating: rating,
+                    time: time,
+                    content: content
+                });
+            }
+            changeSort(yelpObj);
+        }
+        function saveTweet(placeDetails) {
+            var tweet = "Check out " + placeDetails['name'];
+            if (placeDetails['formatted_address'] != undefined)
+                tweet += " located at " + placeDetails['formatted_address'] + ".";
+            tweet += "Website: ";
+            if (placeDetails['website'] != undefined)
+                tweet += placeDetails['website'];
+            else
+                tweet += placeDetails['url'];
+
+            var url = "https://twitter.com/intent/tweet?text=" + encodeURI(tweet) + "&hashtags=TravelAndEntertainmentSearch";
+            document.getElementById("twitter").href = url;
+        }
+        function viewResult() {
+            document.getElementById("overViewPage").hidden = false;
+            document.getElementById("placesDetails").hidden = true;
+            $('.nav-pills a[href="#placesResult"]').tab('show');
+        }
+        function displayNoRecord(id) {
+            if (id == 'details') {
+                document.getElementById("info").innerHTML = "<div class='noRecord'>No Records.</div>";
+                document.getElementById("photos").innerHTML = "<div class='noRecord'>No Records.</div>";
+                document.getElementById("mapFail").innerHTML = "<div class='noRecord'>No Records.</div>";
+                document.getElementById("reviewFail").innerHTML = "<div class='noRecord'>No Records.</div>";
+            }
+            else
+                document.getElementById(id).innerHTML = "<div class='noRecord'>No Records.</div>";
+        }
+
+        $(function () {
+            $('#clear').click(function () {
+                var ipLocation = document.getElementById("ipLocation").value;
+                document.getElementById("formBox").reset();
+                document.getElementById("ipLocation").value = ipLocation;
+
+                googleObj = [];
+                yelpObj = [];
+                placeAddress = {};
+                placeObj1 = [];
+                placeObj2 = [];
+                placeObj3 = [];
+                favMapping = [];
+                check2 = false;
+                check3 = false;
+                yelpCheck = false;
+                currentId = -1;
+                currentPage = -1;
+                currentPlaceId = -1;
+                document.getElementById("overViewPage").hidden = false;
+                $('.nav-pills a[href="#placesResult"]').tab('show');
+                document.getElementById("reviewType").value = 'google';
+                document.getElementById("sortType").value = 'default';
+                document.getElementById("otherLocation").disabled = true;
+                document.getElementById("detailsDiv1").hidden = true;
+                document.getElementById("loader").hidden = true;
+                document.getElementById("placesResult1").innerHTML = "";
+                document.getElementById("placesResult2").innerHTML = "";
+                document.getElementById("placesResult3").innerHTML = "";
+                document.getElementById("placesDetails").hidden = true;
+                document.getElementById("mapContainer").innerHTML = "";
+                document.getElementById("route-Panel").innerHTML = "";
+                document.getElementById("info").innerHTML = "";
+                document.getElementById("photos").innerHTML = "";
+                document.getElementById("googleReviews").innerHTML = "";
+                document.getElementById("yelpReviews").innerHTML = "";
+                //document.getElementById("yelpReviews").hidden = true;
+                document.getElementById("detailsButton1").disabled = true;
+                document.getElementById("detailsButton2").disabled = true;
+            });});
+        document.addEventListener('DOMContentLoaded', currentLocation);
+    </script>
+    <script type="text/javascript">
+        $(function () {
+            $('#mapForm').bootstrapValidator({
+                trigger: 'blur keyup',
+                feedbackIcons: {
+                    invalid: 'glyphicon glyphicon-remove',
+                    validating: 'glyphicon glyphicon-refresh'
+                },
+                fields: {
+                    mapFrom: {
+                        validators: {
+                            stringLength: {
+                                min: 1,
+                            },
+                            notEmpty: {
+                                message: 'Please enter a location'
+                            }
+                        }
+                    }
+                }
+            })
+            .on('success.field.bv', function (e, data) {
+                if (data.bv.getInvalidFields().length > 0)
+                    data.bv.disableSubmitButtons(true);
+            })
+            .on('success.form.fv', function (e, data) {
+                if (data.fv.getInvalidFields().length > 0)
+                    data.fv.disableSubmitButtons(true);
+            })
+            .on('error.form.fv', function (e, data) {
+                $("#mapSubmit")[0].disabled = true;
+            })
+            .on('error.field.bv', function (e, data) {
+                $("#mapSubmit")[0].disabled = true;
+            })
+        });
+        $(function () {
+            $('#formBox').bootstrapValidator({
+                trigger: 'blur keyup',
+                feedbackIcons: {
+                    invalid: 'glyphicon glyphicon-remove',
+                    validating: 'glyphicon glyphicon-refresh'
+                },
+                fields: {
+                    keyword: {
+                        validators: {
+                            stringLength: {
+                                min: 1,
+                            },
+                            notEmpty: {
+                                message: 'Please enter a keyword'
+                            }
+                        }
+                    },
+                    otherLocation: {
+                        validators: {
+                            stringLength: {
+                                min: 1,
+                            },
+                            notEmpty: {
+                                message: 'Please enter a location'
+                            }
+                        }
+                    }
+                }
+            })
+                .on('success.field.bv', function (e, data) {
+                    if (data.bv.getInvalidFields().length > 0 || (document.getElementById("current").checked && document.getElementById("ipLocation").value == ""))
+                    data.bv.disableSubmitButtons(true);
+            })
+                .on('success.form.fv', function (e, data) {
+                    if (data.fv.getInvalidFields().length > 0 || (document.getElementById("current").checked && document.getElementById("ipLocation").value==""))
+                    data.fv.disableSubmitButtons(true);
+            })
+            .on('error.form.fv', function (e, data){
+                $("#submit")[0].disabled = true;
+            })
+            .on('error.field.bv', function (e, data) {
+                $("#submit")[0].disabled = true;
+            })
+        });
+
+        $(function () {
+            $('#submit').click(function (event) {
+                event.preventDefault();
+                var location = $('input[name=location]:checked').val();
+                var data = {
+                    'keyword': $('#keyword').val(),
+                    'category': $('#category').val(),
+                    'distance': $('#distance').val(),
+                    'location': $('input[name=location]:checked').val(),
+                    'ipLocation': $('#ipLocation').val(),
+                    'otherLocation': $('#otherLocation').val()
+                };
+                document.getElementById("loader").hidden = false;
+                if (location == "Here") {
+                    $.ajax({
+                        global: false,
+                        type: 'GET',
+                        url: '/places',
+                        data: data,
+                        success: function (placesResult) {
+                            document.getElementById("loader").hidden = true;
+                            placeObj1 = placesResult;
+                            displayResult(placesResult, 1);
+                        },
+                        error: function (request, status, error) {
+                            document.getElementById("loader").hidden = true;
+                            document.getElementById("placesResult1").innerHTML = "<div class='error'>Failed to get search results.</div>";
+                        }
+                    });
+                }
+                else {
+                    $.ajax({
+                        global: false,
+                        type: 'GET',
+                        url: '/geocode',
+                        data: { 'otherLocation': $('#otherLocation').val() },
+                        success: function (geocodeObj) {
+                            event.preventDefault();
+                            if (geocodeObj['results'] != undefined && geocodeObj['results'].length > 0) {
+                                var ipOther = geocodeObj['results'][0]['geometry']['location']['lat'] + "," + geocodeObj['results'][0]['geometry']['location']['lng'];
+                                data['ipOther'] = ipOther;
+                                $.ajax({
+                                    global: false,
+                                    type: 'GET',
+                                    url: '/places',
+                                    data: data,
+                                    success: function (placesResult) {
+                                        document.getElementById("loader").hidden = true;
+                                        placeObj1 = placesResult;
+                                        displayResult(placesResult, 1);
+                                    },
+                                    error: function (request, status, error) {
+                                        document.getElementById("loader").hidden = true;
+                                        document.getElementById("placesResult1").innerHTML = "<div class='error'>Failed to get search results.</div>";
+                                    }
+                                });
+                            }
+                            else {
+                                document.getElementById("loader").hidden = true;
+                                document.getElementById("placesResult1").innerHTML = "<div class='error'>Failed to get geocode location results.</div>";
+                            }
+                        },
+                        error: function (request, status, error) {
+                            document.getElementById("loader").hidden = true;
+                            document.getElementById("placesResult1").innerHTML = "<div class='error'>Failed to get geocode location results.</div>";
+                        }
+                    });
+                }
+            })
+        });
+
+        function clickStar(id, pageNo,check,place_id,jump) {
+            var starId = '#star' + pageNo + "" +id;
+            var clickId = '#click' + pageNo + "" + id;
+            if ($(starId).hasClass("fa-star")) {
+                $(clickId).removeClass('active');
+                $(clickId).removeClass('active-2');
+                $(clickId).removeClass('active-3');
+                $(starId).removeClass('fa-star');
+                $(starId).addClass('fa-star-o');
+                removeFavorite(place_id,jump);
+            } else {
+                $(clickId).addClass('active');
+                $(clickId).addClass('active-2');
+                $(starId).addClass('fa-star');
+                $(starId).removeClass('fa-star-o');
+                $(clickId).addClass('active-3');
+                addFavorite(id, pageNo, place_id);
+            }
+
+            if (check && currentId == id && currentPage == pageNo) {
+                changeDetailStar(false);
+            }
+        }
+        function changeDetailStar(check) {
+            var id = currentId;
+            var pageno = currentPage;
+            var place_id = currentPlaceId;
+            if ($('#detailStar').hasClass("fa-star")) {
+                $('#detailClick').removeClass('active');
+                $('#detailClick').removeClass('active-2');
+                $('#detailClick').removeClass('active-3');
+                $('#detailStar').removeClass('fa-star');
+                $('#detailStar').addClass('fa-star-o');
+                if (check)
+                    clickStar(id, pageno, false, place_id,false);
+            } else {
+                $('#detailClick').addClass('active');
+                $('#detailClick').addClass('active-2');
+                $('#detailStar').addClass('fa-star');
+                $('#detailStar').removeClass('fa-star-o');
+                $('#detailClick').addClass('active-3');
+                if (check)
+                    clickStar(id, pageno, false, place_id,false);
+            }
+        }
+        function addFavorite(id, pageNo,place_id) {
+            var jsonObj;
+            if (pageNo == 1)
+                jsonObj = placeObj1;
+            else if (pageNo == 2)
+                jsonObj = placeObj2;
+            else
+                jsonObj = placeObj3;
+            var count = (favorite.getItem("FavoriteCount") == null) ? 0 : favorite.getItem("FavoriteCount");
+            var counter = (favorite.getItem("FavoriteCounter") == null) ? 0 : favorite.getItem("FavoriteCounter");
+
+            favMapping.push({
+                'place_id': place_id,
+                'id': id,
+                'pageno': pageNo
+            });
+            count++;
+            counter++;
+            favorite.setItem("Icon" + counter, jsonObj['results'][id]['icon']);
+            favorite.setItem("Place" + counter, jsonObj['results'][id]['place_id']);
+            favorite.setItem("Name" + counter, jsonObj['results'][id]['name']);
+            favorite.setItem("Address" + counter, jsonObj['results'][id]['vicinity']);
+            favorite.setItem("Lat" + counter, jsonObj['results'][id]['geometry']['location']['lat']);
+            favorite.setItem("Lng" + counter, jsonObj['results'][id]['geometry']['location']['lng']);
+            favorite.setItem("FavoriteCount", count);
+            favorite.setItem("FavoriteCounter", counter);
+            favorite.setItem(place_id, counter);
+            var key = "Favorite" + counter;
+            favorite.setItem(key, place_id);
+
+            if ((count - 1) % 20 == 0) {
+                displayFavorite(false,-1);
+            }
+            else {
+                var favPage = parseInt(count / 20);
+                var tableId = "favTable" + (favPage + 1);
+                var index = (count % 20);
+                var table = document.getElementById(tableId);
+                var row = table.insertRow(index);
+                var no = row.insertCell(0);
+                var category = row.insertCell(1);
+                var name = row.insertCell(2);
+                var address = row.insertCell(3);
+                var fav = row.insertCell(4);
+                var details = row.insertCell(5);
+
+                var favRow = "favrow" + (counter);
+                row.id = favRow;
+                no.innerHTML = count;
+                category.innerHTML = "<img src='" + jsonObj['results'][id]['icon'] + "' width='50' height='20' alt='No image'/>";
+                name.innerHTML = jsonObj['results'][id]['name'];
+                address.innerHTML = jsonObj['results'][id]['vicinity'];
+                fav.innerHTML = "<div><button class='deleteBtn' onclick=checkFavorite(" + counter + ")><div class='glyphicon glyphicon-trash'></div></button></div>";
+                details.innerHTML = "<button type='button' class='btn btn-default' onclick=getDetails('" + jsonObj['results'][id]['place_id'] + "','" + jsonObj['results'][id]['geometry']['location']['lat'] + "','" + jsonObj['results'][id]['geometry']['location']['lng'] + "'," + id + "," + pageNo + ")><div class='glyphicon glyphicon-menu-right'></div></button>";
+                favorite.setItem("CurrentFavPage" + counter, favPage + 1);
+            }
+            if (currentPlaceId == place_id) {
+                counter = favorite.getItem(currentPlaceId);
+                favRow = "favrow" + counter;
+                document.getElementById(favRow).style.backgroundColor = "#fedf96";
+            }
+        }
+        function displayFavorite(jump,displayPage) {
+            if (favorite.getItem("FavoriteCount") == null || favorite.getItem("FavoriteCount") == 0) {
+                document.getElementById("favContent").hidden = true;
+                document.getElementById("favEmpty").hidden = false;
+                return;
+            }
+            document.getElementById("favEmpty").hidden = true;
+            document.getElementById("favContent").hidden = false;
+            document.getElementById("favTable").innerHTML = "";
+
+            var count = favorite.getItem("FavoriteCount");
+            var counter = favorite.getItem("FavoriteCounter");
+
+            var inc = 0;
+            var page = 1;
+            var favid = "FavPage" + page;
+            var tableid = "favTable" + page;
+            var html_text = "<div id=" + favid + ">";
+            html_text += "<table id='"+tableid+"' class='table table-hover'><tr><th>#</th><th>Category</th><th>Name</th><th>Address</th><th>Favorite</th><th>Details</th></tr>";
+
+            for (i = 1; i <= counter; i++) {
+                var checkKey = "Favorite" + i;
+                if (favorite.getItem(checkKey) == null) continue;
+
+                var placeNow = favorite.getItem("Place" + i);
+                var idNow = -1;
+                var pageNow = -1;
+                for (var map = 0; map < favMapping.length; map++) {
+                    if (favMapping[map]['place_id'] == placeNow) {
+                        idNow = favMapping[map]['id'];
+                        pageNow = favMapping[map]['pageno'];
+                        break;
+                    }
+                }
+
+                if (inc != 0 && inc % 20 == 0) {
+                    html_text += "</table>";
+                    if (page == 1) {
+                        html_text += "<div class='page'><button class='btn btn-default' onclick=getFavPage(" + page + "," + (page + 1) + ")>Next</button></div>";
+                    }
+                    else {
+                        html_text += "<div class='page'><button class='btn btn-default' onclick=getFavPage(" + page + "," + (page - 1) + ")>Previous</button></div>";
+                        html_text += "<div class='page'><button class='btn btn-default' onclick=getFavPage(" + page + "," + (page + 1) + ")>Next</button></div>";
+                    }
+                    html_text+= "</div>";
+                    page++;
+                    favid = "FavPage" + page;
+                    tableid = "favTable" + page;
+                    html_text += "<div id='" + favid + "' hidden>";
+                    html_text += "<table id='"+tableid+"' class='table table-hover'><tr><th>#</th><th>Category</th><th>Name</th><th>Address</th><th>Favorite</th><th>Details</th></tr>";
+                }
+                inc++;
+                favorite.setItem("CurrentFavPage" + i, page);
+                var favRow = "favrow" + (i);
+                html_text += "<tr id='" + favRow + "'><td>" + (inc) + "</td>";
+                html_text += "<td><img src='" + favorite.getItem("Icon"+i) + "' width='50' height='20' alt='No image'/></td>";
+                html_text += "<td>" + favorite.getItem("Name" + i) + "</td>";
+                html_text += "<td>" + favorite.getItem("Address" + i) + "</td>";
+                html_text += "<td><div><button class='deleteBtn' onclick=checkFavorite(" + i + ")><div class='glyphicon glyphicon-trash'></div></button></div></td>";
+                html_text += "<td><button type='button' class='btn btn-default' onclick=getDetails('" + favorite.getItem("Place" + i) + "','" + favorite.getItem("Lat" + i) + "','" + favorite.getItem("Lng" + i) + "'," + idNow + "," + pageNow + ")><div class='glyphicon glyphicon-menu-right'></div></button></td>";
+                html_text += "</tr>";
+            }
+            html_text += "</table>";
+            if (page != 1) {
+                html_text += "<div class='page'><button class='btn btn-default' onclick=getFavPage(" + page + "," + (page - 1) + ")>Previous</button></div>";
+            }
+            html_text+="</div>"
+            document.getElementById("favTable").innerHTML = html_text;
+
+            if (jump && displayPage != 1) {
+                favid = "FavPage" + displayPage;
+                var maxPage = favorite.getItem("FavoriteCounter") + 1;
+                for (i = 1; i <= maxPage; i++) {
+                    if (document.getElementById("FavPage" + i) == null)
+                        break;
+                    document.getElementById("FavPage" + i).hidden = true;
+                }
+                if (document.getElementById(favid) == null)
+                    displayPage--;
+                favid = "FavPage" + displayPage;
+                if (document.getElementById(favid) != null)
+                    document.getElementById(favid).hidden = false;
+            }
+            
+            counter = favorite.getItem(currentPlaceId);
+            favRow = "favrow" + counter;
+            if (document.getElementById(favRow)!=null)
+                document.getElementById(favRow).style.backgroundColor = "#fedf96";
+        }
+        function getFavPage(curr, next) {
+            var currPage = "FavPage" + curr;
+            var nextpage = "FavPage" + next;
+
+            document.getElementById(currPage).hidden = true;
+            document.getElementById(nextpage).hidden = false;
+        }
+        function removeFavorite(place_id,jump) {
+            var count = favorite.getItem("FavoriteCount");
+            var counter = favorite.getItem(place_id);
+            favorite.removeItem("Icon" + counter);
+            favorite.removeItem("Place" + counter);
+            favorite.removeItem("Name" + counter);
+            favorite.removeItem("Address" + counter);
+            favorite.removeItem("Lat" + counter);
+            favorite.removeItem("Lng" + counter);
+            favorite.removeItem(place_id);
+            favorite.removeItem("Favorite" + counter);
+            count--;
+            favorite.setItem("FavoriteCount", count);
+            var displayId = favorite.getItem("CurrentFavPage" + counter);
+            favorite.removeItem("CurrentFavPage" + counter);
+            for (i = 0; i < favMapping.length; i++) {
+                if (favMapping[i]['place_id'] == place_id) {
+                    favMapping.splice(i,1);
+                    break;
+                }
+            }
+            displayFavorite(true, displayId);
+        }
+        function checkFavorite(counter) {
+            var id;
+            var pageno;
+            var jsonObj;
+            if (pageno == 1)
+                jsonObj = placeObj1;
+            else if (pageno == 2)
+                jsonObj = placeObj2;
+            else
+                jsonObj = placeObj3;
+
+            var place_id = favorite.getItem("Place" + counter);
+
+            var found = false;
+            for (i = 0; i < favMapping.length; i++) {
+                if (favMapping[i]['place_id'] == place_id) {
+                    id = favMapping[i]['id'];
+                    pageno = favMapping[i]['pageno'];
+                    found = true;
+                    break;
+                }
+            }
+            if (found)
+                clickStar(id, pageno, true, place_id, true);
+            else
+                removeFavorite(place_id,true);
+        }
+        function changeReview() {
+            var reviewVal = document.getElementById('reviewType').value;
+            if (reviewVal == "yelp" && !yelpCheck) {
+                event.preventDefault();
+                $.ajax({
+                    global: false,
+                    type: 'GET',
+                    url: '/yelpMatch',
+                    data: placeAddress,
+                    success: function (bestMatch) {
+                        if (bestMatch.businesses!=undefined && bestMatch.businesses.length>0) {
+                            event.preventDefault();
+                            $.ajax({
+                                global: false,
+                                type: 'GET',
+                                url: '/yelpReviews',
+                                data: { 'id':bestMatch.businesses[0].id },
+                                success: function (yelpReviews) {
+                                    displayYelpReviews(yelpReviews);
+                                },
+                                error: function (request, status, error) {
+                                    document.getElementById("yelpReviews").innerHTML = "<div class='error'>Failed to get Yelp reviews results.</div>";
+                                }
+                            });
+                        }
+                        else {
+                            displayReviewTable(yelpObj);
+                        }
+                    },
+                    error: function (request, status, error) {
+                        document.getElementById("yelpReviews").innerHTML = "<div class='error'>Failed to get Best match results.</div>";
+                    }
+                });
+                yelpCheck = true;
+            }
+            else {
+                changeSort();
+            }
+        }
+
+    </script>
+    <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDEIPSWphsc9lRCqEOtAkvh-MEjFlQTOKk&libraries=places&callback=initAutocomplete" async defer></script>
+    <style>
+        body {
+            margin: 0px auto;
+        }
+        @media (max-width:767px){
+            #formBox {
+                padding: 5px;
+                padding: 10px 10px 10px 10px;
+                width: 95%;
+                margin-left: auto;
+                margin-right: auto;
+            }
+            #fixDetails {
+                width: 95%;
+                margin-left: auto;
+                margin-right: auto;
+            }
+            #placesResult1, #placesResult2, #placesResult3, #info, #favTable {
+                overflow-x: auto;
+                white-space: nowrap;
+            } 
+            .imageColumn {
+                flex: 100%;
+                min-width: 100%;
+                max-width: 100%;
+                padding: 0 4px;
+            }
+            #openHoursModal{
+                width:95%;
+            }
+            #directionButton {
+                margin-top: 20px;
+            }
+        }
+        @media (min-width:767px) {
+            body{
+                width:70%;
+            }
+            #formBox {
+                width: 800px;
+                margin-top: 30px;
+                margin-left: auto;
+                margin-right: auto;
+                padding: 10px 10px 10px 50px;
+            }
+            .imageColumn {
+                flex: 25%;
+                min-width: 25%;
+                max-width: 25%;
+                padding: 0 4px;
+            }
+            #directionButton {
+                margin-top: 30px;
+            }
+        } 
+        #formBox {
+            background-color: #f9f9f9;
+            border: 2px solid #c3c3c3;
+        }
+
+        #formLabel {
+            font-size: 25px;
+            text-align: center;
+            font-weight: 600;
+            margin-top: 5px;
+            margin-bottom: 5px;
+        }
+        #mainTable{
+            padding:5px;
+        }
+        #placesResult button{
+            margin:auto;
+        }
+        .marginTop {
+            margin: 5px 0px 5px 0px;
+        }
+        #streetView{
+            height:300px;
+        }
+        #mapContainer {
+            width:inherit;
+            height: 300px;
+        }
+        #route-Panel {
+            font-family: 'Roboto','sans-serif';
+            line-height: 30px;
+            overflow: auto;
+            width: inherit;
+        }
+
+       #route-Panel select, #right-panel input {
+           font-size: 15px;
+       }
+      #route-Panel i {
+          font-size: 12px;
+      }
+      #map{
+          margin-top:10px;
+      }
+      #map label{
+          margin-top:10px;
+      }
+      
+     .click {
+         font-size: 30px;
+         color: grey;
+         width: 40px;
+         height: 40px;
+         padding: 0px;
+         cursor: pointer;
+     }
+     span:hover {
+         opacity: 0.8;
+     }
+     .active-2 span {
+         color: #F5CC27 !important;
+     }
+     .page {
+         text-align: center;
+     }
+     .page button {
+         height: 2%;
+         width: 15%;
+     }
+     .nav-pills {
+         text-align: center;
+     }
+     .nav-pills > li {
+         float: none;
+         display: inline-block;
+         *display: inline;
+         zoom: 1;
+     }
+     .nav{
+         margin-top:10px;
+     }
+     .nav-tabs > li{
+         margin-top:20px;
+         float:right;
+         display:flex;
+     }
+     #mainTable table{
+         margin:10px 0px 10px 0px;
+     }
+        .detailsButton{
+            float: right;
+        }
+        #detailsDiv1, #detailsDiv2 {
+            height: 30px;
+            margin-bottom: 10px;
+        }
+     #detailsTable a{
+         text-decoration:none;
+         cursor:pointer;
+     }
+     #placeName{
+         font-size:15px;
+         text-align:center;
+         font-weight:bold;
+         margin:10px 0px 10px 0px;
+     }
+        #rightSection{
+            display:inline-block;
+            float:right;
+        }
+        #leftSection {
+            display: inline-block;
+        }
+        #rightSection button{
+            width:40px;
+            height:40px;
+        }
+        #rightSection img {
+            width: 40px;
+            height: 40px;
+        }
+        #detailClick {
+            font-size: 30px;
+            cursor: pointer;
+            padding:0px;
+            color:grey;
+        }
+        .active #detailStar, .active-2 #detailStar {
+            color: #F5CC27 !important;
+        }
+
+        .stars-outer {
+            display: block;
+            font-family: FontAwesome;
+        }
+
+        .stars-inner {
+            margin-top:5px;
+            overflow: hidden;
+        }
+
+       .stars-inner::before {
+           content: "\f005 \f005 \f005 \f005 \f005";
+           color: #f8ce0b;
+       }
+       #leftDiv,#rightDiv{
+           display:inline-block;
+       }
+       #leftDiv{
+           float:left;
+           margin:10px 10px 0px 0px;
+           margin-top:15px;
+       }
+      .imageRow {
+          display: flex;
+          flex-wrap: wrap;
+          padding: 0 4px;
+      }
+
+      
+
+      .imageColumn img {
+          border-radius:2%;
+          margin-top: 8px;
+          vertical-align: middle;
+          border: 2px solid #DCDCDC;
+          padding: 5px;
+      }
+        #mapIcon {
+            margin-top:10px;
+            margin-bottom: 10px;
+            border: 1px solid #DCDCDC;
+            border-radius: 2%;
+        }
+        .reviewRate {
+            display:inline-block;
+            float:left;
+            color: #e96d1e;
+        }
+        .reviewTime {
+            display: inline-block;
+            color: #96999c;
+            margin-left:5px;
+        }
+        .reviewName {
+            color: #5399ff;
+            font-weight:bold;
+        }
+        .profilePic {
+            display: inline-block;
+            float: left;
+            margin: 10px 10px 10px 10px;
+        }
+        .profilePic img {
+            border-radius: 50%;
+        }
+        .reviewTable {
+            margin-top: 10px;
+            display: flex;
+            border: 2px solid #DCDCDC;
+        }
+
+        .reviewTable a {
+            cursor: pointer;
+        }
+        .reviewContent {
+            display: inline-block;
+            margin: 5px 5px 5px 5px;
+        }
+        #twitter{
+            cursor:pointer;
+        }
+        .noRecord {
+            background-color: #fff3cd;
+            color: #cab57e;
+            padding: 5px 5px 5px 5px;
+            margin: 20px auto 0 auto;
+        }
+        .error {
+            background-color: #f8d7da;
+            color: #a77c7c;
+            padding: 5px 5px 5px 5px;
+            margin: 20px auto 0 auto;
+        }
+        #reviews select {
+            background-color: #868e96;
+            color:white;
+            margin-top:10px;
+        }
+        #loader{
+            margin-top:20px;
+        }
+        .fade {
+            opacity: 1;
+            transition: all linear 1s;
+        }
+        .fade.ng-hide {
+            opacity: 0;
+        }
+        .fade.ng-hide-add,
+        .fade.ng-hide-remove {
+            transition: all linear 1s;
+        }
+        .form-group.required .control-label:after {
+            content: " *";
+            color: red;
+        }
+    </style>
+</head>
+<body ng-controller="MyController">
+    <form class="form-horizontal" id="formBox" data-toggle="validator" role="form">
+        <div id="formLabel">Travel and Entertainment Search</div>
+        <div class="form-group required">
+            <label for="keyword" class="control-label col-xs-12 col-md-3">Keyword</label>
+            <div class="col-xs-12 col-md-8">
+                <input type="text" class="form-control input-sm" id="keyword" name="keyword">
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="category" class="control-label col-xs-12 col-md-3">Category</label>
+            <div class="col-md-6">
+                <select class="form-control input-sm" id="category">
+                    <option value="default" selected>Default</option>
+                    <option value="airport">Airport</option>
+                    <option value="amusement_park">Amusement Park</option>
+                    <option value="aquarium">Aquarium</option>
+                    <option value="art_gallery">Art Gallery</option>
+                    <option value="bakery">Bakery</option>
+                    <option value="bar">Bar</option>
+                    <option value="beauty_salon">Beauty Salon</option>
+                    <option value="bowling_alley">Bowling Alley</option>
+                    <option value="bus_station">Bus Station</option>
+                    <option value="cafe">Cafe</option>
+                    <option value="campground">Campground</option>
+                    <option value="car_rental">Car Rental</option>
+                    <option value="casino">Casino</option>
+                    <option value="lodging">Lodging</option>
+                    <option value="movie_theater">Movie Theater</option>
+                    <option value="museum">Museum</option>
+                    <option value="night_club">Night Club</option>
+                    <option value="park">Park</option>
+                    <option value="parking">Parking</option>
+                    <option value="restaurant">Restaurant</option>
+                    <option value="shopping_mall">Shopping Mall</option>
+                    <option value="stadium">Stadium</option>
+                    <option value="subway_station">Subway Station</option>
+                    <option value="taxi_stand">Taxi Stand</option>
+                    <option value="train_station">Train Station</option>
+                    <option value="transit_station">Transit Station</option>
+                    <option value="travel_agency">Travel Agency</option>
+                    <option value="zoo">Zoo</option>
+                </select>
+            </div>
+        </div>
+        <div class="form-group">
+            <label for="distance" class="control-label col-xs-12 col-md-3">Distance (miles)</label>
+            <div class="col-md-6 col-xs-12">
+                <input type="text" class="form-control input-sm" id="distance" placeholder="10">
+            </div>
+        </div>
+        <fieldset>
+            <div class="form-group required">
+                <label for="from" class="control-label col-xs-12 col-md-3">From</label>
+                <div class="col-md-8 col-xs-12">
+                    <div class="custom-control custom-radio">
+                        <input class="custom-control-input" type="radio" name="location" id="current" value="Here" onclick="checkStatus()" checked>
+                        <label class="custom-control-label" for="current">
+                            Current location
+                        </label>
+                    </div>
+                    <div class="custom-control custom-radio">
+                        <input class="custom-control-input" type="radio" name="location" id="other" value="Other" onclick="enableButton()">
+                        <label class="custom-control-label" for="other">
+                            Other. Please specify:
+                        </label>
+                    </div>
+                    <div class="marginTop">
+                        <input type="hidden" id="ipLocation" name="ipLocation" value="" />
+                        <input type="hidden" id="ipOther" name="ipOther" value="" />
+                        <input type="text" class="form-control input-sm col-xs-12 col-sm-6" id="otherLocation" name="otherLocation" placeholder="Enter a location" onFocus="geolocate()" disabled>
+                    </div>
+                </div>
+           </div>
+        </fieldset>
+        <div class="form-group">
+            <div class="col-md-2 col-xs-3">
+                <button type="submit" class="btn btn-primary" id="submit" disabled><div class="glyphicon glyphicon-search"></div>Search</button>
+            </div>
+            <div class="col-md-2 col-xs-3"> 
+                <button class="btn btn-default" id="clear" ng-click="reviewType='google'">Clear</button>
+            </div>
+        </div>
+    </form>
+    <div id="mainTable">
+        <ul class="nav nav-pills">
+            <li class="active"><a data-toggle="pill" href="#placesResult">Result</a></li>
+            <li><a data-toggle="pill" href="#favorite">Favorite</a></li>
+        </ul>
+        <div class="tab-content" id="overViewPage">
+            <div id="placesResult" class="tab-pane fade in active">
+                <div class="progress" id="loader" hidden>
+                    <div class="progress-bar progress-bar-striped active" role="progressbar" aria-valuenow="40" aria-valuemin="0" aria-valuemax="100" style="width:40%"></div>
+                </div>
+                <div id="detailsDiv1" hidden>
+                    <button type="button" id="detailsButton1" class="detailsButton btn btn-default" onclick="viewDetails()" disabled>
+                        <div class="glyphicon glyphicon-menu-right"></div> Details
+                    </button>
+                </div>
+                <div id="placesResult1"></div>
+                <div id="placesResult2" hidden></div>
+                <div id="placesResult3" hidden></div>
+            </div>
+            <div id="favorite" class="tab-pane fade">
+                <div class="noRecord" id="favEmpty">No rows to display</div>
+                <div id="favContent" hidden>
+                    <div id="detailsDiv2">
+                        <button type="button" id="detailsButton2" class="detailsButton btn btn-default" onclick="viewDetails()" disabled>
+                            <div class="glyphicon glyphicon-menu-right"></div> Details
+                        </button>
+                    </div>
+                    <div id="favTable"></div>
+                </div>
+                </div>
+        </div>
+        <div id="placesDetails" hidden>
+            <div id="fixDetails">
+                <div id="placeName"></div>
+                <div id="listButton">
+                    <div id="leftSection">
+                        <button type="button" class="btn btn-default" onclick="viewResult()">
+                            <div class="glyphicon glyphicon-menu-left"></div> List
+                        </button>
+                    </div>
+                    <div id="rightSection">
+                        <button type='button' id='detailClick' class='btn btn-default' onclick="changeDetailStar(true)"><span id="detailStar" class='fa fa-star-o'></span></button>
+                        <a id="twitter"><img src='http://cs-server.usc.edu:45678/hw/hw8/images/Twitter.png' /></a>
+                    </div>
+                </div>
+                <div>
+                    <ul class="nav nav-tabs">
+                        <li><a data-toggle="tab" href="#reviews">Reviews</a></li>
+                        <li><a data-toggle="tab" href="#map">Map</a></li>
+                        <li><a data-toggle="tab" href="#photos">Photos</a></li>
+                        <li class="active"><a data-toggle="tab" href="#info">Info</a></li>
+                    </ul>
+                </div>
+            </div>
+            <div id="detailsContent" class="tab-content">
+                <div id="info" class="tab-pane fade in active"></div>
+                <div id="photos" class="tab-pane fade"></div>
+                <div id="map" class="tab-pane fade">
+                    <div class="row">
+                        <form id="mapForm">
+                            <div class="form-row">
+                                <div class="col-md-4 col-xs-12">
+                                    <label>From</label>
+                                    <input type="text" class="form-control" id="mapFrom" name="mapFrom" value="">
+                                </div>
+                                <div class="col-md-4 col-xs-12">
+                                    <label>To</label>
+                                    <input type="text" class="form-control" id="mapTo" readonly>
+                                </div>
+                                <div class="col-md-2 col-xs-12">
+                                    <label>Travel Mode</label>
+                                    <select class="form-control" id="mode">
+                                        <option value="DRIVING" selected>Driving</option>
+                                        <option value="BICYCLING">Bicycling</option>
+                                        <option value="TRANSIT">Transit</option>
+                                        <option value="WALKING">Walking</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-2 col-xs-12" id="directionButton">
+                                    <button type="submit" class="btn btn-primary" id="mapSubmit" onclick="displayRoute()" disabled>Get Directions</button>
+                                </div>
+                            </div> 
+                        </form>
+                    </div>
+                    <a onclick="toggleMap()" style="cursor:pointer"><img id="mapIcon" src="http://cs-server.usc.edu:45678/hw/hw8/images/Pegman.png" width="40" height="40" /></a>
+                    <div id="mapContainer"></div>
+                    <div id="route-Panel"></div>
+                    <div id="mapFail"></div>
+                </div>
+                <div id="reviews" class="tab-pane fade">
+                    <div class="row" id="reviewTab">
+                        <div class="col-md-3 col-xs-6 form-group">
+                            <select class="form-control" id="reviewType" onchange="changeReview()" ng-model="reviewType">
+                                <option value='google'>Google Reviews</option>
+                                <option value='yelp'>Yelp Reviews</option>
+                            </select>
+                        </div>
+
+                        <div class="col-md-3 col-xs-6 form-group">
+                            <select class="form-control" id="sortType" onchange="changeSort()">
+                                <option value="default">Default Order</option>
+                                <option value="highRating">Highest rating</option>
+                                <option value="lowRating">Lowest rating</option>
+                                <option value="mostRecent">Most Recent</option>
+                                <option value="leastRecent">Least Recent</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div ng-show="reviewType=='google'" id="googleReviews" class="fade"></div>
+                    <div ng-show="reviewType=='yelp'" id="yelpReviews" class="fade"></div>
+                    <div id="reviewFail"></div>
+                </div>
+                <div class="modal fade" id="openHoursModal" role="dialog">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <button type="button" class="close" data-dismiss="modal">&times;</button>
+                                <h4 class="modal-title">Opening Hours</h4>
+                            </div>
+                            <div class="modal-body" id="modalBody"></div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-default" data-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
